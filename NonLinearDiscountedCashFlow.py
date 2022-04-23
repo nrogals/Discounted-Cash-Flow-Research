@@ -62,7 +62,7 @@ def nonLinearDiscountedCashFlow(w,c):
 
 
 
-def attemptLogin():
+def attemptLoginToValueInvestingIO():
 
     # Fill in your details here to be posted to the login form.
     payload = {
@@ -81,8 +81,26 @@ def attemptLogin():
             pass
         else:
             print(p.text.find("Wrong credentials provided..."))
-            raise            
+            raise        
 
+
+def getProjectedFreeCashFlows(ticker):
+    """ 
+    Still be worked on. Waiting on Steve to implement custom API for me. 
+    """
+    pass
+
+def getWeightedAverageCostOfCapital(ticker):
+    """
+    Still be worked on. Waiting on Steve to implement custom API for me. 
+    """
+    pass
+
+def getValuationParameters():
+    """
+    Still be worked on. Waiting on Steve to implement custom API for me. 
+    """
+    pass
 
 def getNASDAQData(ticker, startDate, endDate):
     data = nasdaqdatalink.get("FRED/GDP", start_date=startDate, end_date=endDate)
