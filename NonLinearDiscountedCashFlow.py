@@ -18,7 +18,8 @@ import numpy as np
 import requests
 import nasdaqdatalink
 import npf
-from scipy.linalg import null_space    
+from scipy.linalg import null_space 
+import random   
 
 nasdaqdatalink.ApiConfig.api_key = "fxzcvpCP8VkSQsQks51b"
 
@@ -88,22 +89,86 @@ def getProjectedFreeCashFlows(ticker):
     """ 
     Still be worked on. Waiting on Steve to implement custom API for me. 
     """
-    pass
+    
+    apiKey = "c9g3iqe2brtv74e4sth0"
+    r = requests.get('https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    r = r.json()
+    projectedFreeCashFlow = r[ticker]["projected_fcf"]    
+    periodsAndFreeCashFlows = []    
+    for d in projectedFreeCashFlow:
+        fcf = d["fcf"] 
+        period = d["period"]
+        periodsAndFreeCashFlows.append((period, fcf))
+    periodsAndFreeCashFlows.sort(key = lambda x: x[0])
+    periodsAndFreeCashFlows = list(map(lambda x: (int(x[0]), int(x[1])), periodsAndFreeCashFlows))    
+    wacc = r[ticker]["wacc_components"]['wacc']
 
-def getWeightedAverageCostOfCapital(ticker):
-    """
-    Still be worked on. Waiting on Steve to implement custom API for me. 
-    """
-    pass
+    return periodsAndFreeCashFlows, wacc
 
-def getValuationParameters():
-    """
-    Still be worked on. Waiting on Steve to implement custom API for me. 
-    """
-    pass
+
+def getOutstandingShares(ticker):
+
+    apiKey = "c9g3iqe2brtv74e4sth0"
+    r = requests.get('https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    r = r.json()
+    outstandingShares = r[ticker]["outstanding_share"]
+    return outstandingShares
+
+
+def getNetDebt(ticker):
+    return random.uniform(10000,4 * 10000)
+
+def getLongTermGrowthRate(ticker):
+    return random.uniform(0.02,0.02)
+
+def getDCFAndSharePrice(ticker, numberOfYears = None):        
+
+    periodsAndFreeCashFlows, wacc = getProjectedFreeCashFlows(ticker)     
+    longTermGrowthRate = getLongTermGrowthRate(ticker)
+    netDebt = getNetDebt(ticker)
+    outstandingShares = getOutstandingShares(ticker)  
+
+    if numberOfYears is None:      
+        numberOfYears = len(periodsAndFreeCashFlows)
+        
+    wacc = round(wacc, 3)    
+    discountedCashFlows = ([(1/((1+wacc)**(i + 1 - 0.5))) * periodsAndFreeCashFlows[i][1] for i in range(numberOfYears)])
+    discountedCashFlowValue = sum(discountedCashFlows)
+            
+    lastFCFCalculated = (periodsAndFreeCashFlows[numberOfYears-1][1] +
+                        periodsAndFreeCashFlows[numberOfYears-2][1] +
+                        periodsAndFreeCashFlows[numberOfYears-3][1])/3.0  
+
+
+    terminalValue = (lastFCFCalculated * (1 + longTermGrowthRate)) / (1+wacc - (1 + longTermGrowthRate))
+    terminalValueDiscounted = terminalValue / ((1+ wacc)**numberOfYears)
+    totalDcfValue = discountedCashFlowValue + terminalValueDiscounted - netDebt
+
+    return totalDcfValue, totalDcfValue / outstandingShares, outstandingShares
 
 def getNASDAQData(ticker, startDate, endDate):
     data = nasdaqdatalink.get("FRED/GDP", start_date=startDate, end_date=endDate)
     return data 
 
 
+def testValuationAPI(ticker):
+    
+    apiKey = "c9g3iqe2brtv74e4sth0"
+    r = requests.get('https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    print(r.json())
+
+
+
+
+def main():
+    testValuationAPI("XOM")
+    ticker = "XOM"
+    tenYearDCF = getDCFAndSharePrice(ticker, numberOfYears = 5)
+    print("Ten Year DCF \n {0}".format(tenYearDCF))
+
+
+
+
+
+
+main()
