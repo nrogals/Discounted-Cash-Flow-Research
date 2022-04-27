@@ -44,7 +44,7 @@ def nonLinearDiscountedCashFlow(w,c):
     q,r = np.linalg.qr(w_i)
     angle = np.dot(ns[:,1].T, ns[:,0])
     
-    print("Null Space is provided by: {0} for the linear map {1} \n".format(ns, w_i))
+    print("Null Space is provided by: \n {0} for the linear map {1}. \n It has the dimensions of {2} \n".format(ns, w_i, ns.shape))
     
     assert(np.isclose(angle, 0.0))
     print("Matrix QR {0} and WI {1} \n".format(q*r, w_i))    
@@ -59,10 +59,12 @@ def nonLinearDiscountedCashFlow(w,c):
     r = np.matmul(w_i.T / np.linalg.norm(w_i.T), projCAgainstWi[:,np.newaxis])
     v = k + r
     v = v[:,0]
-    print("Norm Lin Alg: \n {0} and \n v: \n {1} \n and \n c: \n {2} \n".format(np.linalg.norm(v-c), v, c))
-    
-    return c
 
+    print("Kernel Vector \n {0} \n Range Vector \n {1} \n Full Vector \n {2}".format(k, r, k + r))
+
+    print("projCAgainstNs has the shape {0}".format(projCAgainstNs.shape))
+
+    return k, r, v, ns, projCAgainstNs
 
 
 def attemptLoginToValueInvestingIO():
@@ -262,6 +264,40 @@ def compareValueOfCashFlows(ticker):
 
 
 
+
+
+def calculateMarketValues(ticker):
+
+    calculatedValueOfCashFlows = getCalculatedValueOfCashFlows(ticker, numberOfYears=5)
+    marketValueOfCashFlows = getMarketValueOfCashFlows(ticker, numberOfYears = 5)
+    projectedCashFlows, wacc, waccDiscountVector = getProjectedFreeCashFlows(ticker) 
+
+
+    d = [p[0] for p in projectedCashFlows]
+    c = [p[1] for p in projectedCashFlows]
+    print("Dates: \n {0} \n".format(d))
+    print("Cash Flows \n {0} \n".format(c))
+
+    k, r, v, ns, projCAgainstNs = nonLinearDiscountedCashFlow(wacc,c)   
+
+    print("Null Space {0} with shape {1} \n and Projection of C onto Null Space {2} \n".format(ns, ns.shape, projCAgainstNs))
+
+    
+    #Get Plot For Null Space
+    n = len(ns)
+    import matplotlib.pyplot as plt
+    plt.plot(d, ns, 'o')
+    plt.ylabel('Cash-Flow Amount')   
+    plt.xlabel("Date") 
+    plt.title("Plot of Null Space of Discount Vector")
+    plt.legend()
+    plt.savefig("NullSpaceOfDiscountVector.png")
+
+
+
+
+
+
 def testCompareValueOfCashFlows():
 
     tickerXOM = "XOM"
@@ -302,7 +338,9 @@ def testDiscountedCashFlowAPI(ticker):
 
 
 def main():
-    testCompareValueOfCashFlows()
+    
+    ticker = "XOM"
+    calculateMarketValues(ticker)
 
 
 
