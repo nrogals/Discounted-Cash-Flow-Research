@@ -10,6 +10,8 @@ TODO:
     1. Waiting on API from Steve at Value Investing. 
 
 
+ https://valueinvesting.io/api/dcf?tickers=GOOGL,AAPL&api_key=
+
 Author: 
 Nathaniel Rogalskyj 
 """
@@ -86,44 +88,82 @@ def attemptLoginToValueInvestingIO():
 
 
 def getProjectedFreeCashFlows(ticker):
-    """ 
-    Still be worked on. Waiting on Steve to implement custom API for me. 
-    """
     
     apiKey = "c9g3iqe2brtv74e4sth0"
-    r = requests.get('https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    r = requests.get('https://valueinvesting.io/api/dcf?tickers={1}&api_key={0}'.format(apiKey, ticker))       
+    if r.reason != "OK":
+        raise RuntimeError("Problem with Request was Found. Error Code {0} \n".format(r.reason))
+
+    
     r = r.json()
-    projectedFreeCashFlow = r[ticker]["projected_fcf"]    
+    if ticker in set(list(r.keys())) == 0:
+        raise RuntimeError("Dictionary does not include ticker {1} is empty: {0} \n".format(ticker, r[ticker]))
+    
+    if len(r[ticker]) == 0:
+        raise RuntimeError("Dictionary for ticker {1} is empty: {0} \n".format(ticker, r[ticker]))
+
+    #It looks like sometimews this could come back empty.
+    try:
+        projectedFreeCashFlow = r[ticker]["projected_fcf"]    
+    except:
+        print("Error here: Json dictionary could have problems. {0}".format(r))
+
     periodsAndFreeCashFlows = []    
     for d in projectedFreeCashFlow:
         fcf = d["fcf"] 
         period = d["period"]
         periodsAndFreeCashFlows.append((period, fcf))
     periodsAndFreeCashFlows.sort(key = lambda x: x[0])
-    periodsAndFreeCashFlows = list(map(lambda x: (int(x[0]), int(x[1])), periodsAndFreeCashFlows))    
+    periodsAndFreeCashFlows = list(map(lambda x: (int(x[0]), int(x[1])), periodsAndFreeCashFlows)) 
+    r = requests.get('https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    r = r.json()
     wacc = r[ticker]["wacc_components"]['wacc']
+    waccDiscountVector = [(1/(1+wacc)**(i+1)) for i in range(len(periodsAndFreeCashFlows))]
 
-    return periodsAndFreeCashFlows, wacc
+    return periodsAndFreeCashFlows, wacc, waccDiscountVector
 
 
 def getOutstandingShares(ticker):
 
     apiKey = "c9g3iqe2brtv74e4sth0"
-    r = requests.get('https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    r = requests.get('https://valueinvesting.io/api/dcf?tickers={1}&api_key={0}'.format(apiKey, ticker))
     r = r.json()
     outstandingShares = r[ticker]["outstanding_share"]
     return outstandingShares
 
 
 def getNetDebt(ticker):
-    return random.uniform(10000,4 * 10000)
+    apiKey = "c9g3iqe2brtv74e4sth0"
+    r = requests.get('https://valueinvesting.io/api/dcf?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    r = r.json()
+    netDebt = r[ticker]["net_debt"]
+    return netDebt
 
 def getLongTermGrowthRate(ticker):
-    return random.uniform(0.02,0.02)
+    apiKey = "c9g3iqe2brtv74e4sth0"
+    r = requests.get('https://valueinvesting.io/api/dcf?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    r = r.json()
+    terminalGrowthRate = r[ticker]["terminal_growth_rate"]
+    return terminalGrowthRate
 
-def getDCFAndSharePrice(ticker, numberOfYears = None):        
 
-    periodsAndFreeCashFlows, wacc = getProjectedFreeCashFlows(ticker)     
+def getDcfFiveYearSharePrice(ticker):
+    apiKey = "c9g3iqe2brtv74e4sth0"
+    r = requests.get('https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    r = r.json()
+    sharePrice = r[ticker]["valuation"]["fair_price_dcf_growth_5"]
+    return sharePrice
+
+def getSharePrice(ticker):
+    apiKey = "c9g3iqe2brtv74e4sth0"
+    r = requests.get('https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    r = r.json()
+    sharePrice = r[ticker]["stock_price"]
+    return sharePrice
+
+def getCalculatedDCFAndSharePrice(ticker, numberOfYears = None):        
+
+    periodsAndFreeCashFlows, wacc, _ = getProjectedFreeCashFlows(ticker)     
     longTermGrowthRate = getLongTermGrowthRate(ticker)
     netDebt = getNetDebt(ticker)
     outstandingShares = getOutstandingShares(ticker)  
@@ -131,10 +171,9 @@ def getDCFAndSharePrice(ticker, numberOfYears = None):
     if numberOfYears is None:      
         numberOfYears = len(periodsAndFreeCashFlows)
         
-    wacc = round(wacc, 3)    
     discountedCashFlows = ([(1/((1+wacc)**(i + 1 - 0.5))) * periodsAndFreeCashFlows[i][1] for i in range(numberOfYears)])
     discountedCashFlowValue = sum(discountedCashFlows)
-            
+
     lastFCFCalculated = (periodsAndFreeCashFlows[numberOfYears-1][1] +
                         periodsAndFreeCashFlows[numberOfYears-2][1] +
                         periodsAndFreeCashFlows[numberOfYears-3][1])/3.0  
@@ -143,8 +182,105 @@ def getDCFAndSharePrice(ticker, numberOfYears = None):
     terminalValue = (lastFCFCalculated * (1 + longTermGrowthRate)) / (1+wacc - (1 + longTermGrowthRate))
     terminalValueDiscounted = terminalValue / ((1+ wacc)**numberOfYears)
     totalDcfValue = discountedCashFlowValue + terminalValueDiscounted - netDebt
+    sharePrice = totalDcfValue / outstandingShares
+    return sharePrice
 
-    return totalDcfValue, totalDcfValue / outstandingShares, outstandingShares
+
+def getCalculatedValueOfCashFlows(ticker, numberOfYears= None):
+    
+    periodsAndFreeCashFlows, wacc, _ = getProjectedFreeCashFlows(ticker)     
+    longTermGrowthRate = getLongTermGrowthRate(ticker)
+    netDebt = getNetDebt(ticker)
+    outstandingShares = getOutstandingShares(ticker)  
+
+    if numberOfYears is None:      
+        numberOfYears = len(periodsAndFreeCashFlows)
+        
+    discountedCashFlows = ([(1/((1+wacc)**(i + 1 - 0.5))) * periodsAndFreeCashFlows[i][1] for i in range(numberOfYears)])
+    discountedCashFlowValue = sum(discountedCashFlows)
+
+    return discountedCashFlowValue
+
+def getMarketValueOfCashFlows(ticker, numberOfYears = None):
+    
+    periodsAndFreeCashFlows, wacc, _ = getProjectedFreeCashFlows(ticker)     
+    longTermGrowthRate = getLongTermGrowthRate(ticker)
+    netDebt = getNetDebt(ticker)
+    outstandingShares = getOutstandingShares(ticker)  
+    marketSharePrice = getSharePrice(ticker)
+
+
+    lastFCFCalculated = (periodsAndFreeCashFlows[numberOfYears-1][1] +
+                        periodsAndFreeCashFlows[numberOfYears-2][1] +
+                        periodsAndFreeCashFlows[numberOfYears-3][1])/3.0  
+
+    terminalValue = (lastFCFCalculated * (1 + longTermGrowthRate)) / (1+wacc - (1 + longTermGrowthRate))
+    marketTotalDcfValue = marketSharePrice * outstandingShares
+    terminalValueDiscounted = terminalValue / ((1+ wacc)**numberOfYears)
+    marketValueOfProjectedCashFlows = marketTotalDcfValue - terminalValueDiscounted + netDebt
+
+    return marketValueOfProjectedCashFlows
+
+
+def testGetDCFAndSharePrice():
+
+    ticker="XOM"
+    expectedXomSharePrice = getDcfFiveYearSharePrice(ticker)    
+    calculatedXomSharePrice = getCalculatedDCFAndSharePrice(ticker, numberOfYears = 5)
+    print("Calculated Share Price {0} and Expected Share Price {1} \n".format(calculatedXomSharePrice, expectedXomSharePrice))
+    assert((np.isclose(np.array(expectedXomSharePrice), np.array(calculatedXomSharePrice), rtol=0.1)).all())
+    print("Passed {0} Ticker \n".format(ticker))
+
+    ticker="CVX"
+    expectedXomSharePrice = getDcfFiveYearSharePrice(ticker)    
+    calculatedXomSharePrice = getCalculatedDCFAndSharePrice(ticker, numberOfYears = 5)
+    print("Calculated Share Price {0} and Expected Share Price {1} \n".format(calculatedXomSharePrice, expectedXomSharePrice))
+    assert((np.isclose(np.array(expectedXomSharePrice), np.array(calculatedXomSharePrice), rtol=0.1)).all())
+    print("Passed {0} Ticker \n".format(ticker))
+
+    ticker="GE"
+    expectedGESharePrice = getDcfFiveYearSharePrice(ticker)    
+    calculatedGESharePrice = getCalculatedDCFAndSharePrice(ticker, numberOfYears = 5)
+    print("Calculated Share Price {0} and Expected Share Price {1} \n".format(calculatedGESharePrice, expectedGESharePrice))
+    assert((np.isclose(np.array(expectedGESharePrice), np.array(calculatedGESharePrice), rtol=0.1)).all())
+    print("Passed {0} Ticker \n".format(ticker))
+
+
+
+def compareValueOfCashFlows(ticker):
+
+    calculatedValueOfCashFlows = getCalculatedValueOfCashFlows(ticker, numberOfYears=5)
+    marketValueOfCashFlows = getMarketValueOfCashFlows(ticker, numberOfYears = 5)
+    projectedCashFlows, wacc, waccDiscountVector = getProjectedFreeCashFlows(ticker)    
+
+    print("Ticker {2}: \n"
+        "Calculated Cash Flow Value \n {0} \n"
+        "Expected Cash Flow Value \n {1} \n"
+        "Cash Flows are: \n {3} \n"
+        "wacc discount vector: {4} \n"
+        .format(calculatedValueOfCashFlows, marketValueOfCashFlows, ticker, projectedCashFlows, waccDiscountVector))
+
+
+
+def testCompareValueOfCashFlows():
+
+    tickerXOM = "XOM"
+    compareValueOfCashFlows(tickerXOM)
+
+    tickerGM = "GM"
+    compareValueOfCashFlows(tickerGM)
+
+    tickerPYPL = "PYPL"
+    compareValueOfCashFlows(tickerPYPL)
+
+    tickerNVDA = "NVDA"    
+    compareValueOfCashFlows(tickerNVDA)
+
+    tickerBP = "BP"
+    compareValueOfCashFlows(tickerBP)
+
+
+
 
 def getNASDAQData(ticker, startDate, endDate):
     data = nasdaqdatalink.get("FRED/GDP", start_date=startDate, end_date=endDate)
@@ -158,15 +294,15 @@ def testValuationAPI(ticker):
     print(r.json())
 
 
+def testDiscountedCashFlowAPI(ticker):
+    apiKey = "c9g3iqe2brtv74e4sth0"
+    r = requests.get('https://valueinvesting.io/api/dcf?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    print(r.json())
+
 
 
 def main():
-    testValuationAPI("XOM")
-    ticker = "XOM"
-    tenYearDCF = getDCFAndSharePrice(ticker, numberOfYears = 5)
-    print("Ten Year DCF \n {0}".format(tenYearDCF))
-
-
+    testCompareValueOfCashFlows()
 
 
 
