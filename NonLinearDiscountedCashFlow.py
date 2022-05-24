@@ -7,9 +7,42 @@ The discounted cash-flow can viewed as a linear pricing tool.
 A non-linear discounted cash-flow can be considered, which is what we do here. 
 
 TODO:
-    1. Waiting on API from Steve at Value Investing. 
+    1. Need to investigate the errors that arise from the discounted cash-flow.  
+    2. Understand why the null space vector plotting does not accurately represent 
+    the values that get assigned in the charts. It looks like the plotting is wrong.
+    3. Need to develop a simiulator for cash-flow volatility that we can then invert for and 
+    see how our algorithms do on simulated data. 
+    4. Need to develop a regression to map the the kernel volatility into the error that is seen 
+    This will require coming up with a good regression that should be attempt to capture the reliance 
+    of the kernel vectors into the potential error. This will represent a non-linear regression. 
+    5. Analyze other research that provide one with a view on cash-flow volatility and its impact on 
+    the pricing of the asset with a fixed wacc. 
+    6. I may want to change the style of the code so that all vectors are column or row vectors so that 
+    it is not confusing to the user. 
+
+    
+    1. Paper Finds the Following:
+        - Empirical Evidence that cash flow volatility is negatively valued by investors. 
+        - The magnitude of the effect is substantial with a one standard deviation increase in cash-flow 
+        volatility resulting in approximately 32% decrease in the value of the firm. This is consistent with 
+        risk management theory and suggests that managers efforts to produce smooth financial statements may 
+        add value to the firm. 
 
 
+
+
+
+
+    Data Sources For Private Equity 
+    1. https://www.pehub.com/us-pe-deal-making-data/
+
+
+    1. I may want to change the style of 
+
+
+
+
+Key API: 
  https://valueinvesting.io/api/dcf?tickers=GOOGL,AAPL&api_key=
 
 Author: 
@@ -18,12 +51,68 @@ Nathaniel Rogalskyj
 
 import numpy as np
 import requests
-import nasdaqdatalink
-import npf
 from scipy.linalg import null_space 
 import random   
+import logging 
 
-nasdaqdatalink.ApiConfig.api_key = "fxzcvpCP8VkSQsQks51b"
+#
+cashFlowLow = -100
+cashFlowHigh = 1000
+increment = 100
+
+def randomWalkIterator():
+    current = np.random.uniform(low=cashFlowLow, high=cashFlowHigh)
+    while True: 
+        current = current + random.randint(-1, 1) * increment
+        yield current
+
+def simulateCashFlowsMethod1(numberOfTimePeriods, wacc = 0.1, stdMultiplicativeNoise=0.1):
+    """
+    Simulates a set of cash flows and penalizes the cash-flows 
+    for bad cash-flow volatility based off the the kernel  vector norm.
+    """
+    
+    cashFlowVector = np.array([[next(randomWalkIterator()) for i in range(numberOfTimePeriods)]])
+    cashFlowVectorNorm = np.linalg.norm(cashFlowVector)
+    
+    waccDiscountVector = np.array([[1/(1+wacc)**(i+1) for i in range(numberOfTimePeriods)]])
+    #Penalization Vector
+    lowerBound = -cashFlowVectorNorm/(numberOfTimePeriods -1)
+    upperBound = cashFlowVectorNorm/(numberOfTimePeriods -1)
+    penalizationVector = [np.random.uniform(lowerBound,upperBound) for i in range(numberOfTimePeriods - 1)]
+    ns = null_space(waccDiscountVector)
+    k = np.matmul(ns, penalizationVector)
+    kNorm = np.linalg.norm(k)
+    modifiedCashFlowVector = cashFlowVector - k
+    unmodifiedValue = np.matmul(cashFlowVector, waccDiscountVector.T)
+    #Penalize the negative values. 
+    #Alpha represents the largest percentage value that can be penalizied. 
+    #Cash-Flow Volatility.
+    alpha = 0.5
+    penalizationValue = -1 * (kNorm / cashFlowVectorNorm) * unmodifiedValue * alpha
+    modifiedCashFlowValue = unmodifiedValue - penalizationValue
+    stdModifiedCashFlowValue = abs(stdMultiplicativeNoise * modifiedCashFlowValue)
+    realNoisyModifiedCashFlowValue = np.random.normal(modifiedCashFlowValue, stdModifiedCashFlowValue)
+    return modifiedCashFlowVector, waccDiscountVector, realNoisyModifiedCashFlowValue, modifiedCashFlowValue
+
+    
+
+
+
+def simulateCashFlowsMethod2(numberOfTimePeriods, wacc = 0.1, stdMultiplicativeNoise=0.1):
+    """
+    TODO: Implement Simulation of Cash Flow Method 2. 
+    """
+    pass
+
+
+def simulateCashFlowsMethod3(numberOfTimePeriods, wacc = 0.1, stdMultiplicativeNoise=0.1):
+    """
+    TODO: Implement Simulation of Cash Flow Method 2. 
+    """
+    pass
+
+
 
 
 def linearDiscountedCashFlow(w, c):
@@ -31,10 +120,6 @@ def linearDiscountedCashFlow(w, c):
     return np.dot(w_i.T, c)
 
 
-def testLinearDiscountedCashFlow(w,c):
-    actual = npf.npv(w, c)
-    expected = linearDiscountedCashFlow(w,c)
-    assert(actual == expected)
 
 def nonLinearDiscountedCashFlow(w,c):
     w_i = np.array([[(1+w)**(-1*(i)) for i in range(len(c))]])   
@@ -54,7 +139,7 @@ def nonLinearDiscountedCashFlow(w,c):
     projCAgainstNs = np.matmul(c, ns)        
     wINorm = np.linalg.norm(w_i)
     projCAgainstWi = np.matmul(c, w_i.T / wINorm)      
-        
+    #k = SUM_i=1^N-1 <c, ns[:,i]> * ns[:,i]
     k = np.matmul(ns, projCAgainstNs[:, np.newaxis])
     r = np.matmul(w_i.T / np.linalg.norm(w_i.T), projCAgainstWi[:,np.newaxis])
     v = k + r
@@ -64,7 +149,7 @@ def nonLinearDiscountedCashFlow(w,c):
 
     print("projCAgainstNs has the shape {0}".format(projCAgainstNs.shape))
 
-    return k, r, v, ns, projCAgainstNs
+    return k, r, v, ns, projCAgainstNs, w_i
 
 
 def attemptLoginToValueInvestingIO():
@@ -86,8 +171,34 @@ def attemptLoginToValueInvestingIO():
             pass
         else:
             print(p.text.find("Wrong credentials provided..."))
-            raise        
+            raise      
+        
 
+def parseToDate(date):
+    #What should I aim to do with the date? 
+    #I will round up the dates. 
+
+    from datetime import datetime
+    n = datetime.now()
+    currentYear = n.year
+
+   
+
+    if("M" in date):
+        providedYear = int(date.split("/")[-1])
+        if providedYear <= currentYear: 
+            print("Returning None Since Current Year {0} is greater or equal to Provided Year {1} \n".format(providedYear, currentYear))
+            return None
+        else:
+            return providedYear
+
+    else:
+        try:
+            providedYear = int(date)
+            return providedYear
+        except:
+            pass
+    
 
 def getProjectedFreeCashFlows(ticker):
     
@@ -116,7 +227,8 @@ def getProjectedFreeCashFlows(ticker):
         period = d["period"]
         periodsAndFreeCashFlows.append((period, fcf))
     periodsAndFreeCashFlows.sort(key = lambda x: x[0])
-    periodsAndFreeCashFlows = list(map(lambda x: (int(x[0]), int(x[1])), periodsAndFreeCashFlows)) 
+    periodsAndFreeCashFlows = list(map(lambda x: (parseToDate(x[0]), int(x[1])) if parseToDate(x[0]) is not None else None, periodsAndFreeCashFlows)) 
+    periodsAndFreeCashFlows = list(filter(lambda x: x is not None, periodsAndFreeCashFlows))
     r = requests.get('https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker))
     r = r.json()
     wacc = r[ticker]["wacc_components"]['wacc']
@@ -165,7 +277,11 @@ def getSharePrice(ticker):
 
 def getCalculatedDCFAndSharePrice(ticker, numberOfYears = None):        
 
-    periodsAndFreeCashFlows, wacc, _ = getProjectedFreeCashFlows(ticker)     
+    try:
+        periodsAndFreeCashFlows, wacc, _ = getProjectedFreeCashFlows(ticker)     
+    except:
+        logging.INFO("Projected Free Cash Flows Not Available")
+        raise RuntimeError("Projected Free Cash Flows are not available. There is an incorrect ticker.")
     longTermGrowthRate = getLongTermGrowthRate(ticker)
     netDebt = getNetDebt(ticker)
     outstandingShares = getOutstandingShares(ticker)  
@@ -226,27 +342,31 @@ def getMarketValueOfCashFlows(ticker, numberOfYears = None):
 
 def testGetDCFAndSharePrice():
 
+    #Reduce this tolerance. I think that this should be closer to zero.
+    allowableTolerance = 0.3
+    
     ticker="XOM"
     expectedXomSharePrice = getDcfFiveYearSharePrice(ticker)    
     calculatedXomSharePrice = getCalculatedDCFAndSharePrice(ticker, numberOfYears = 5)
     print("Calculated Share Price {0} and Expected Share Price {1} \n".format(calculatedXomSharePrice, expectedXomSharePrice))
-    assert((np.isclose(np.array(expectedXomSharePrice), np.array(calculatedXomSharePrice), rtol=0.1)).all())
+    assert((np.isclose(np.array(expectedXomSharePrice), np.array(calculatedXomSharePrice), rtol=allowableTolerance)).all())
     print("Passed {0} Ticker \n".format(ticker))
-
+    
     ticker="CVX"
-    expectedXomSharePrice = getDcfFiveYearSharePrice(ticker)    
-    calculatedXomSharePrice = getCalculatedDCFAndSharePrice(ticker, numberOfYears = 5)
-    print("Calculated Share Price {0} and Expected Share Price {1} \n".format(calculatedXomSharePrice, expectedXomSharePrice))
-    assert((np.isclose(np.array(expectedXomSharePrice), np.array(calculatedXomSharePrice), rtol=0.1)).all())
+    expectedCvxSharePrice = getDcfFiveYearSharePrice(ticker)    
+    calculatedCvxSharePrice = getCalculatedDCFAndSharePrice(ticker, numberOfYears = 5)
+    print("Calculated Share Price {0} and Expected Share Price {1} \n".format(calculatedCvxSharePrice, expectedCvxSharePrice))
+    assert((np.isclose(np.array(expectedCvxSharePrice), np.array(calculatedCvxSharePrice), rtol=allowableTolerance)).all())
     print("Passed {0} Ticker \n".format(ticker))
-
+    
+    
     ticker="GE"
     expectedGESharePrice = getDcfFiveYearSharePrice(ticker)    
     calculatedGESharePrice = getCalculatedDCFAndSharePrice(ticker, numberOfYears = 5)
     print("Calculated Share Price {0} and Expected Share Price {1} \n".format(calculatedGESharePrice, expectedGESharePrice))
-    assert((np.isclose(np.array(expectedGESharePrice), np.array(calculatedGESharePrice), rtol=0.1)).all())
+    assert((np.isclose(np.array(expectedGESharePrice), np.array(calculatedGESharePrice), rtol=allowableTolerance)).all())
     print("Passed {0} Ticker \n".format(ticker))
-
+    
 
 
 def compareValueOfCashFlows(ticker):
@@ -262,11 +382,7 @@ def compareValueOfCashFlows(ticker):
         "wacc discount vector: {4} \n"
         .format(calculatedValueOfCashFlows, marketValueOfCashFlows, ticker, projectedCashFlows, waccDiscountVector))
 
-
-
-
-
-def calculateMarketValues(ticker):
+def testNonLinearDiscountedCashFlowOnMarketData(ticker):
 
     calculatedValueOfCashFlows = getCalculatedValueOfCashFlows(ticker, numberOfYears=5)
     marketValueOfCashFlows = getMarketValueOfCashFlows(ticker, numberOfYears = 5)
@@ -278,21 +394,154 @@ def calculateMarketValues(ticker):
     print("Dates: \n {0} \n".format(d))
     print("Cash Flows \n {0} \n".format(c))
 
-    k, r, v, ns, projCAgainstNs = nonLinearDiscountedCashFlow(wacc,c)   
+    k, r, v, ns, projCAgainstNs = nonLinearDiscountedCashFlow(wacc,c) 
+    print("K Vector {0}, R vector {1} V {2}, NS {3}, ProjCAgainstNS {3}")
 
     print("Null Space {0} with shape {1} \n and Projection of C onto Null Space {2} \n".format(ns, ns.shape, projCAgainstNs))
 
-    
-    #Get Plot For Null Space
+    #TODO:
+    #Understand why the plotting of the null-space vectors 
+    #does not appropiately plot the correct values. 
     n = len(ns)
     import matplotlib.pyplot as plt
     plt.plot(d, ns, 'o')
     plt.ylabel('Cash-Flow Amount')   
     plt.xlabel("Date") 
-    plt.title("Plot of Null Space of Discount Vector")
+    plt.title("Plot of Null Space of Discount Vector For Ticker {0}".format(ticker))
     plt.legend()
-    plt.savefig("NullSpaceOfDiscountVector.png")
+    plt.savefig("NullSpaceOfDiscountVectorForTicker{0}.png".format(ticker))
+    plt.clf()
+    #We can also plot the coordinate vectors here? 
+    #There are N-1 coordinate vectors. 
+    #Representing the different elements of the kernel.
+    print("Size of Projection of C Against Null Space NS {0} \n".format(projCAgainstNs))
+    plt.plot([i for i in range(len(projCAgainstNs))], list(projCAgainstNs),  marker='o')
+    plt.title('Different Projections Of K onto NS For Ticker {0}'.format(ticker))
+    plt.legend()
+    plt.savefig("PlotOfProjectionsOfCashFlowOntoNullSpaceForTicker{0}.png".format(ticker))
 
+    return calculatedValueOfCashFlows, marketValueOfCashFlows
+
+
+
+def getFeatureVector(cashFlowVector, wacc):
+    
+    k, r, v, ns, projCAgainstNs, waccVector = nonLinearDiscountedCashFlow(wacc, cashFlowVector)
+
+    cashFlowVector = cashFlowVector[:, np.newaxis]
+    linearDiscountedValue = np.matmul(waccVector, cashFlowVector)
+
+    #These values can be used in the calculation. 
+    #projCAgainstNs are the projection of C against the null-space. 
+    absoluteValueOfProjections = abs(projCAgainstNs)[np.newaxis, :]
+
+    #Need to extract the relevant attributes from the nonLinearDiscountedCashFlow.
+    fullFeatureVector = np.concatenate([linearDiscountedValue, absoluteValueOfProjections], axis = 1)
+    
+    return fullFeatureVector
+
+
+def createFeatureMatrix(cashFlowMatrix, waccVector):
+    
+    #Need to create feature matrix
+    n,p = cashFlowMatrix.shape
+    featureMatrix = []
+    for i in range(n):
+        wacc = waccVector[i]
+        cashFlowVector = np.array(cashFlowMatrix[i, :]) #Need to cast into two d array. 1 x N array.
+        featureVector = getFeatureVector(cashFlowVector, wacc)
+        featureMatrix.append(featureVector)
+
+    featureMatrix = np.concatenate(featureMatrix, axis = 0)
+    return featureMatrix
+
+
+
+def simulateData():
+
+    numberOfTimePeriods = 10 
+    lowWacc = 0.0
+    highWacc = 0.3
+    stdMultiplicativeNoise = 0.1
+
+
+    #Append or concat the matrix.
+    cashFlowMatrix = []
+    cashFlowPrice = []
+    waccVector = []
+    numberOfIterates = 1000
+    for i in range(numberOfIterates):
+        wacc = random.uniform(lowWacc, highWacc)
+        modifiedCashFlowVector, waccDiscountVector, realNoisyModifiedCashFlowValue, modifiedCashFlowValue = simulateCashFlowsMethod1(numberOfTimePeriods, wacc = wacc, stdMultiplicativeNoise=stdMultiplicativeNoise)
+        cashFlowMatrix.append(modifiedCashFlowVector)
+        cashFlowPrice.append(realNoisyModifiedCashFlowValue)
+        waccVector.append(wacc)
+
+    waccVector = np.array(waccVector)
+    cashFlowMatrix = np.concatenate(cashFlowMatrix, axis = 0)
+    cashFlowPrice = np.concatenate(cashFlowPrice, axis = 0)
+
+    return waccVector, cashFlowMatrix, cashFlowPrice
+
+
+def createRealData():
+    #The function will create some real data. 
+    #The real data will be used to quantify 
+    
+    
+    #Get a set of tickers. 
+    
+    
+    #Create a function to get one of these rows for each ticker. 
+    getMarketValueOfCashFlows(ticker, numberOfYears = None)
+    #Add the row to the larger matrix. 
+
+    pass
+
+
+
+    
+
+def testNonLinearDiscountedCashFlowOnSimulatedData():
+    
+    waccVector, cashFlowMatrix, cashFlowPrice = simulateData()
+    featureMatrix = createFeatureMatrix(cashFlowMatrix, waccVector)
+
+    try:
+        #We want a linear least squares solve.
+        #np.linalg.lstsq. 
+        x, residuals, rank, s = np.linalg.lstsq(featureMatrix,cashFlowPrice)
+    except Exception as e:
+        logging.error("Error in Least Squares Solve: \n")
+        logging.error(e)
+    
+    print("Vector X is provided by: {0} \n".format(x))
+    print("Residuals R is provided by: {0} \n".format(residuals))
+    print("Rank is provided by: {0} \n".format(rank))
+    print("Singular Values is provided by: {0} \n".format(s))
+    
+
+    
+
+def  testNonLinearDiscountedCashFlowOnRealData():
+
+    
+    waccVector, cashFlowMatrix, cashFlowPrice = createRealData()
+    featureMatrix = createFeatureMatrix(cashFlowMatrix, waccVector)
+
+
+    try:
+        #We want a linear least squares solve.
+        #np.linalg.lstsq. 
+        x, residuals, rank, s = np.linalg.lstsq(featureMatrix,cashFlowPrice)
+    except Exception as e:
+        logging.error("Error in Least Squares Solve: \n")
+        logging.error(e)
+    
+    print("Vector X is provided by: {0} \n".format(x))
+    print("Residuals R is provided by: {0} \n".format(residuals))
+    print("Rank is provided by: {0} \n".format(rank))
+    print("Singular Values is provided by: {0} \n".format(s))
 
 
 
@@ -316,13 +565,6 @@ def testCompareValueOfCashFlows():
     compareValueOfCashFlows(tickerBP)
 
 
-
-
-def getNASDAQData(ticker, startDate, endDate):
-    data = nasdaqdatalink.get("FRED/GDP", start_date=startDate, end_date=endDate)
-    return data 
-
-
 def testValuationAPI(ticker):
     
     apiKey = "c9g3iqe2brtv74e4sth0"
@@ -339,9 +581,30 @@ def testDiscountedCashFlowAPI(ticker):
 
 def main():
     
-    ticker = "XOM"
-    calculateMarketValues(ticker)
+    #ticker = "XOM"
+    #calculatedValueOfCashFlows, marketValueOfCashFlows = calculateMarketValues(ticker)
+    #testGetDCFAndSharePrice()
 
+    testNonLinearDiscountedCashFlowOnSimulatedData()
+
+    #numberOfTimePeriods = 10
+    #cashFlowVector, waccDiscountVector, realModifiedCashFlowValue, modifiedCashFlowValue = simulateCashFlowsMethod1(numberOfTimePeriods)
+
+
+    #print("Cash Flow Vector {0}, wacc Discount Vector {1}, realModifiedCashFlowValue {2}, modifiedCashFlowValue {3} \n".format(cashFlowVector,
+    #                                                                                                                          waccDiscountVector, 
+    #                                                                                                                          realModifiedCashFlowValue, 
+    #                                                                                                                          modifiedCashFlowValue))
+    
+
+
+
+
+
+
+
+
+    
 
 
 
