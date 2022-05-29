@@ -26,24 +26,17 @@ TODO:
         - The magnitude of the effect is substantial with a one standard deviation increase in cash-flow 
         volatility resulting in approximately 32% decrease in the value of the firm. This is consistent with 
         risk management theory and suggests that managers efforts to produce smooth financial statements may 
-        add value to the firm. 
-
-
-
-
+        add value to the firm.
 
 
     Data Sources For Private Equity 
     1. https://www.pehub.com/us-pe-deal-making-data/
 
 
-    1. I may want to change the style of 
-
-
-
+getMarketValueOfCashFlows
 
 Key API: 
- https://valueinvesting.io/api/dcf?tickers=GOOGL,AAPL&api_key=
+https://valueinvesting.io/api/dcf?tickers=GOOGL,AAPL&api_key=
 
 Author: 
 Nathaniel Rogalskyj 
@@ -54,11 +47,25 @@ import requests
 from scipy.linalg import null_space 
 import random   
 import logging 
+logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
+import time
 
-#
+
 cashFlowLow = -100
 cashFlowHigh = 1000
 increment = 100
+
+#I think the limit may be like 20 in a minute. 
+#As such, I think that it may be necessary to put a
+#10 second delay.
+apiDelay = 3
+
+def getResultsFromRequest(requestString):
+    #This function deals with the rate limiter that 
+    #was put forward by value investing io. 
+    time.sleep(apiDelay)
+    r = requests.get(requestString)
+    return r
 
 def randomWalkIterator():
     current = np.random.uniform(low=cashFlowLow, high=cashFlowHigh)
@@ -95,7 +102,6 @@ def simulateCashFlowsMethod1(numberOfTimePeriods, wacc = 0.1, stdMultiplicativeN
     realNoisyModifiedCashFlowValue = np.random.normal(modifiedCashFlowValue, stdModifiedCashFlowValue)
     return modifiedCashFlowVector, waccDiscountVector, realNoisyModifiedCashFlowValue, modifiedCashFlowValue
 
-    
 
 
 
@@ -203,7 +209,9 @@ def parseToDate(date):
 def getProjectedFreeCashFlows(ticker):
     
     apiKey = "c9g3iqe2brtv74e4sth0"
-    r = requests.get('https://valueinvesting.io/api/dcf?tickers={1}&api_key={0}'.format(apiKey, ticker))       
+    requestString = 'https://valueinvesting.io/api/dcf?tickers={1}&api_key={0}'.format(apiKey, ticker)
+    r = getResultsFromRequest(requestString)
+
     if r.reason != "OK":
         raise RuntimeError("Problem with Request was Found. Error Code {0} \n".format(r.reason))
 
@@ -219,7 +227,7 @@ def getProjectedFreeCashFlows(ticker):
     try:
         projectedFreeCashFlow = r[ticker]["projected_fcf"]    
     except:
-        print("Error here: Json dictionary could have problems. {0}".format(r))
+        raise Exception("Error here: Json dictionary could have problems. {0}".format(r))
 
     periodsAndFreeCashFlows = []    
     for d in projectedFreeCashFlow:
@@ -229,7 +237,9 @@ def getProjectedFreeCashFlows(ticker):
     periodsAndFreeCashFlows.sort(key = lambda x: x[0])
     periodsAndFreeCashFlows = list(map(lambda x: (parseToDate(x[0]), int(x[1])) if parseToDate(x[0]) is not None else None, periodsAndFreeCashFlows)) 
     periodsAndFreeCashFlows = list(filter(lambda x: x is not None, periodsAndFreeCashFlows))
-    r = requests.get('https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker))
+
+    requestString = 'https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker)
+    r = getResultsFromRequest(requestString)
     r = r.json()
     wacc = r[ticker]["wacc_components"]['wacc']
     waccDiscountVector = [(1/(1+wacc)**(i+1)) for i in range(len(periodsAndFreeCashFlows))]
@@ -240,7 +250,8 @@ def getProjectedFreeCashFlows(ticker):
 def getOutstandingShares(ticker):
 
     apiKey = "c9g3iqe2brtv74e4sth0"
-    r = requests.get('https://valueinvesting.io/api/dcf?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    requestString = 'https://valueinvesting.io/api/dcf?tickers={1}&api_key={0}'.format(apiKey, ticker)
+    r = getResultsFromRequest(requestString)
     r = r.json()
     outstandingShares = r[ticker]["outstanding_share"]
     return outstandingShares
@@ -248,29 +259,32 @@ def getOutstandingShares(ticker):
 
 def getNetDebt(ticker):
     apiKey = "c9g3iqe2brtv74e4sth0"
-    r = requests.get('https://valueinvesting.io/api/dcf?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    requestString = 'https://valueinvesting.io/api/dcf?tickers={1}&api_key={0}'.format(apiKey, ticker)
+    r = getResultsFromRequest(requestString)
     r = r.json()
     netDebt = r[ticker]["net_debt"]
     return netDebt
 
 def getLongTermGrowthRate(ticker):
     apiKey = "c9g3iqe2brtv74e4sth0"
-    r = requests.get('https://valueinvesting.io/api/dcf?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    requestString = 'https://valueinvesting.io/api/dcf?tickers={1}&api_key={0}'.format(apiKey, ticker)
+    r = getResultsFromRequest(requestString)
     r = r.json()
     terminalGrowthRate = r[ticker]["terminal_growth_rate"]
     return terminalGrowthRate
 
-
 def getDcfFiveYearSharePrice(ticker):
     apiKey = "c9g3iqe2brtv74e4sth0"
-    r = requests.get('https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    requestString = 'https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker)
+    r = getResultsFromRequest(requestString)
     r = r.json()
     sharePrice = r[ticker]["valuation"]["fair_price_dcf_growth_5"]
     return sharePrice
 
 def getSharePrice(ticker):
     apiKey = "c9g3iqe2brtv74e4sth0"
-    r = requests.get('https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker))
+    requestString = 'https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker)
+    r = getResultsFromRequest(requestString)
     r = r.json()
     sharePrice = r[ticker]["stock_price"]
     return sharePrice
@@ -326,6 +340,9 @@ def getMarketValueOfCashFlows(ticker, numberOfYears = None):
     netDebt = getNetDebt(ticker)
     outstandingShares = getOutstandingShares(ticker)  
     marketSharePrice = getSharePrice(ticker)
+
+    if numberOfYears is None:
+        numberOfYears = len(periodsAndFreeCashFlows)
 
 
     lastFCFCalculated = (periodsAndFreeCashFlows[numberOfYears-1][1] +
@@ -484,27 +501,64 @@ def simulateData():
     return waccVector, cashFlowMatrix, cashFlowPrice
 
 
-def createRealData():
-    #The function will create some real data. 
-    #The real data will be used to quantify 
+def getRealData():
     
+    apiKey = "5KaYTqFoTFjUIjtv1SUUxP_2TTaAJp2j"
     
-    #Get a set of tickers. 
-    
-    
-    #Create a function to get one of these rows for each ticker. 
-    getMarketValueOfCashFlows(ticker, numberOfYears = None)
-    #Add the row to the larger matrix. 
+    #Get tickers here.
+    r = None
+    try:
+        r = requests.get("https://api.polygon.io/v3/reference/tickers?apiKey={0}".format(apiKey))
+    except Exception as e:
+        print(e)
 
-    pass
+    print("Request: \n")
+    print(r)
 
-
-
+    import json
+    r = json.loads(r.content.decode('utf-8'))
+    tickers = [record["ticker"] for record in r["results"] if (record["market"] == "stocks") and not ("." in record["market"])]
     
+    cashFlowMatrix = []
+    cashFlowPrice = []
+    waccVector = []
 
-def testNonLinearDiscountedCashFlowOnSimulatedData():
+    for ticker in tickers: 
+        try: 
+            logging.info("Get Free Cash-Flow Projections For Ticker {0} \n".format(ticker))
+            periodsAndFreeCashFlows, wacc, waccDiscountVector = getProjectedFreeCashFlows(ticker)
+        except Exception as e: 
+           logging.error(e)
+           logging.exception(e)
+           logging.info("Cash-Flows Not Available For the ticker {0} \n".format(ticker))
+           continue
+
+        try:
+            logging.info("Get Market Value of Cash Flows for the ticker {0} \n".format(ticker))
+            marketValueOfCashFlowValue = getMarketValueOfCashFlows(ticker)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            logging.info("Exception is provided by: {0} \n".format(e))
+            logging.info("Cash-Flows Not Available For the ticker {0} \n".format(ticker))
+            continue
+
+        cashFlows = [x[1] for x in periodsAndFreeCashFlows]
+        logging.info("**************************** \n"
+                    "Resolve: Calculated CashFlow Matrix \n"
+                    "CashFlow Price \n"
+                    "WACC Vector \n"
+                    "***************************** \n")
+        cashFlowMatrix.append(cashFlows)
+        cashFlowPrice.append(marketValueOfCashFlowValue)
+        waccVector.append(wacc)
+
+    return waccVector, cashFlowMatrix, cashFlowPrice
+
+
+def testNonLinearDiscountedCashFlowOnRealData():
     
-    waccVector, cashFlowMatrix, cashFlowPrice = simulateData()
+    waccVector, cashFlowMatrix, cashFlowPrice = getRealData()
     featureMatrix = createFeatureMatrix(cashFlowMatrix, waccVector)
 
     try:
@@ -521,12 +575,12 @@ def testNonLinearDiscountedCashFlowOnSimulatedData():
     print("Singular Values is provided by: {0} \n".format(s))
     
 
-    
+
 
 def  testNonLinearDiscountedCashFlowOnRealData():
 
     
-    waccVector, cashFlowMatrix, cashFlowPrice = createRealData()
+    waccVector, cashFlowMatrix, cashFlowPrice = getRealData()
     featureMatrix = createFeatureMatrix(cashFlowMatrix, waccVector)
 
 
@@ -542,10 +596,6 @@ def  testNonLinearDiscountedCashFlowOnRealData():
     print("Residuals R is provided by: {0} \n".format(residuals))
     print("Rank is provided by: {0} \n".format(rank))
     print("Singular Values is provided by: {0} \n".format(s))
-
-
-
-
 
 def testCompareValueOfCashFlows():
 
@@ -568,16 +618,14 @@ def testCompareValueOfCashFlows():
 def testValuationAPI(ticker):
     
     apiKey = "c9g3iqe2brtv74e4sth0"
-    r = requests.get('https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker))
-    print(r.json())
+    requestString = 'https://valueinvesting.io/api/valuation?tickers={1}&api_key={0}'.format(apiKey, ticker)
+    r = getResultsFromRequest(requestString)
 
 
 def testDiscountedCashFlowAPI(ticker):
     apiKey = "c9g3iqe2brtv74e4sth0"
-    r = requests.get('https://valueinvesting.io/api/dcf?tickers={1}&api_key={0}'.format(apiKey, ticker))
-    print(r.json())
-
-
+    requestString = 'https://valueinvesting.io/api/dcf?tickers={1}&api_key={0}'.format(apiKey, ticker)
+    r = getResultsFromRequest(requestString)
 
 def main():
     
@@ -585,7 +633,7 @@ def main():
     #calculatedValueOfCashFlows, marketValueOfCashFlows = calculateMarketValues(ticker)
     #testGetDCFAndSharePrice()
 
-    testNonLinearDiscountedCashFlowOnSimulatedData()
+    #testNonLinearDiscountedCashFlowOnSimulatedData()
 
     #numberOfTimePeriods = 10
     #cashFlowVector, waccDiscountVector, realModifiedCashFlowValue, modifiedCashFlowValue = simulateCashFlowsMethod1(numberOfTimePeriods)
@@ -599,8 +647,8 @@ def main():
 
 
 
-
-
+    getRealData()
+    r = 2 + 2
 
 
 
