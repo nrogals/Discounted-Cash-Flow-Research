@@ -1,22 +1,51 @@
-#nonlinear(c) = 
-#nonlinear(k + r) =
-#linear(c) - p(c) =
-#linear(k+r) - p(k+r) =
-#linear(r) + linear(k) - p(k)
-#= linear(r) - p(k)
+import numpy as np
+import requests
+from scipy.linalg import null_space 
+import matplotlib.pyplot as plt
 
-"""
-I would like to make sure that the penalization term cannot be larger than 10 percent of the 
-value of the cash-flow. 
 
-So bascially, we have something like:
+def plotCashFlowVectors():
 
-nonlinear(c) = linear(k + r) - p(c) = linear(r) - p(c) = linear(r) - alpha * (||k|| /||c||) * linear(r). 
-where above we get that: p(c) = alpha * (||k|| /||c||) * linear(r). 
+    wacc = 0.1
+    N = 40
+    waccVector = np.array([1/(1 + wacc)**(i+1) for i in range(N)])
+    waccVector = waccVector[np.newaxis, :]
+    k = null_space(waccVector)
 
-From the above formulation, we have that: 
-    1. alpha in [0,1]
-    2. ||K|| / ||C|| is [0,1]
-    3. nonlinear(c) <= linear(c). 
-    4. (||p(c)|| / ||linear(c)||)  <= alpha. 
-"""
+    print("Null Space: \n {0} \n".format(k))
+    print(k)
+
+    cashFlowVector = np.array([((-1) ** i) * i for i in range(N)])
+    cashFlowVector = cashFlowVector[:, np.newaxis]
+    alpha = 100
+    firstKernelVector = k[:,0]
+    secondKernelVector = k[:,1]
+    cashFlowVectorPlusFirstKernelVector = cashFlowVector + alpha * firstKernelVector[:, np.newaxis]
+    cashFlowVectorPlusSecondKernelVector = cashFlowVector + alpha * secondKernelVector[:, np.newaxis]
+
+   
+    valueOfCashFlowVector = np.dot(waccVector, cashFlowVector)
+    valueOfCashFlowVectorPlusKernel = np.dot(waccVector, cashFlowVectorPlusFirstKernelVector)
+
+    print("Cash Flow Vector Value {0} \n"
+        "Cash Flow Vector Plus First Kernel Vector {1} \n".format(valueOfCashFlowVector, valueOfCashFlowVectorPlusKernel))
+    
+    v = cashFlowVector[:, 0]
+    vPlusFirstKernel = cashFlowVectorPlusFirstKernelVector[:, 0]
+    vPlusSecondKernel = cashFlowVectorPlusSecondKernelVector[:, 0]
+    print("Value For the First and Second Cash Flows")
+    plt.title("Equivalence of Cash-Flows \n Under Linear Discounted Cash-Flow")
+    plt.plot(v, label = "Cash Flow Vector")
+    plt.plot(vPlusFirstKernel, label = "Cash Flow Vector Plus First Kernel Vector")
+    plt.plot(vPlusSecondKernel, label = "Cash Flow Vector Plus Second Kernel Vector")
+    plt.legend()
+    plt.ylabel('Cash Flow Values')
+    plt.xlabel('Period')
+    plt.savefig("CashFlowVectorPlusKernel")
+
+
+plotCashFlowVectors()
+
+
+
+

@@ -333,13 +333,34 @@ def getCalculatedValueOfCashFlows(ticker, numberOfYears= None):
 
     return discountedCashFlowValue
 
-def getMarketValueOfCashFlows(ticker, numberOfYears = None):
-    
+
+def getRelevantShareCharacteristics(ticker):
+
     periodsAndFreeCashFlows, wacc, _ = getProjectedFreeCashFlows(ticker)     
     longTermGrowthRate = getLongTermGrowthRate(ticker)
     netDebt = getNetDebt(ticker)
     outstandingShares = getOutstandingShares(ticker)  
     marketSharePrice = getSharePrice(ticker)
+
+    return periodsAndFreeCashFlows, longTermGrowthRate, netDebt, outstandingShares, marketSharePrice
+
+
+def getMarketValueOfCashFlows(ticker, marketSharePrice = None, numberOfYears = None):
+    """
+    The Market Value of the CashFlows can be looked at as the value of the 
+    Projection Period provided by:
+    https://valueinvesting.io/XOM/valuation/dcf-growth-exit-5y
+    """
+    
+    periodsAndFreeCashFlows, wacc, _ = getProjectedFreeCashFlows(ticker)     
+    longTermGrowthRate = getLongTermGrowthRate(ticker)
+    netDebt = getNetDebt(ticker)
+    outstandingShares = getOutstandingShares(ticker)
+    
+    if marketSharePrice is None: 
+
+        marketSharePrice = getSharePrice(ticker)
+    
 
     if numberOfYears is None:
         numberOfYears = len(periodsAndFreeCashFlows)
@@ -352,9 +373,11 @@ def getMarketValueOfCashFlows(ticker, numberOfYears = None):
     terminalValue = (lastFCFCalculated * (1 + longTermGrowthRate)) / (1+wacc - (1 + longTermGrowthRate))
     marketTotalDcfValue = marketSharePrice * outstandingShares
     terminalValueDiscounted = terminalValue / ((1+ wacc)**numberOfYears)
-    marketValueOfProjectedCashFlows = marketTotalDcfValue - terminalValueDiscounted + netDebt
+    #I think that this is very important to the calculation.
+    #Where does netdebt play in. 
+    marketValueOfProjectesCashFlows = marketTotalDcfValue - terminalValueDiscounted + netDebt
 
-    return marketValueOfProjectedCashFlows
+    return marketValueOfProjectesCashFlows
 
 
 def testGetDCFAndSharePrice():
@@ -520,7 +543,7 @@ def getRealData():
     tickers = [record["ticker"] for record in r["results"] if (record["market"] == "stocks") and not ("." in record["market"])]
     
     cashFlowMatrix = []
-    cashFlowPrice = []
+    cashFlowPriceVector = []
     waccVector = []
 
     for ticker in tickers: 
@@ -550,8 +573,39 @@ def getRealData():
                     "WACC Vector \n"
                     "***************************** \n")
         cashFlowMatrix.append(cashFlows)
-        cashFlowPrice.append(marketValueOfCashFlowValue)
+        cashFlowPriceVector.append(marketValueOfCashFlowValue)
         waccVector.append(wacc)
+    
+    
+    #Filter for the array that has the largest number of arrays 
+    #of arrays
+    lengthOfCashFlowVectorList = [len(cashFlowVector) for cashFlowVector in cashFlowMatrix]
+    from collections import Counter 
+    c = Counter(lengthOfCashFlowVectorList)
+    mostCommonLength = c.most_common(1)[0][0]
+    assert(type(mostCommonLength) == int)
+
+    cashFlowMatrixFiltered = []
+    cashFlowPriceFiltered = []
+    waccVectorFiltered = []
+    for i in range(len(cashFlowMatrix)):
+
+        cashFlow = cashFlowMatrix[i]
+        cashFlowPrice = cashFlowPriceVector[i]
+        wacc = waccVector[i]
+
+        if len(cashFlow) == mostCommonLength:
+            cashFlowMatrixFiltered.append(cashFlow)
+            cashFlowPriceFiltered.append(cashFlowPrice)
+            waccVectorFiltered.append(wacc)
+
+    
+    #Convert the real data matricies to
+    #numpy matricies
+    logging.info("Converting to Numpy Arrays \n")
+    cashFlowMatrix = np.array(cashFlowMatrixFiltered)
+    cashFlowPrice = np.array(cashFlowPriceFiltered)
+    waccVector = np.array(waccVectorFiltered)
 
     return waccVector, cashFlowMatrix, cashFlowPrice
 
@@ -573,17 +627,30 @@ def testNonLinearDiscountedCashFlowOnRealData():
     print("Residuals R is provided by: {0} \n".format(residuals))
     print("Rank is provided by: {0} \n".format(rank))
     print("Singular Values is provided by: {0} \n".format(s))
+
+
+def testMarketValueOfCashFlows():
+
+    print("Market Value of Cash Flows \n")
+    ticker = "XOM"
+    marketSharePrice = 128 
+    calculatedMarketValueOfCashFlows = getMarketValueOfCashFlows(ticker, marketSharePrice = marketSharePrice)
+    #My calculation of the market value of the cash flows
+    #is provided below.
+
+    #In the below lines we look at calculating the appropiate value for the 
+    #market value of xom's cash flows. 
+    periodsAndFreeCashFlows, longTermGrowthRate, netDebt, outstandingShares, marketSharePrice = getRelevantShareCharacteristics(ticker)    
+
+    print("Market Value Of Cash Flows {0} \n".format(calculatedMarketValueOfCashFlows))
+
     
 
-
-
 def  testNonLinearDiscountedCashFlowOnRealData():
-
     
     waccVector, cashFlowMatrix, cashFlowPrice = getRealData()
     featureMatrix = createFeatureMatrix(cashFlowMatrix, waccVector)
-
-
+    
     try:
         #We want a linear least squares solve.
         #np.linalg.lstsq. 
@@ -629,31 +696,7 @@ def testDiscountedCashFlowAPI(ticker):
 
 def main():
     
-    #ticker = "XOM"
-    #calculatedValueOfCashFlows, marketValueOfCashFlows = calculateMarketValues(ticker)
-    #testGetDCFAndSharePrice()
-
-    #testNonLinearDiscountedCashFlowOnSimulatedData()
-
-    #numberOfTimePeriods = 10
-    #cashFlowVector, waccDiscountVector, realModifiedCashFlowValue, modifiedCashFlowValue = simulateCashFlowsMethod1(numberOfTimePeriods)
-
-
-    #print("Cash Flow Vector {0}, wacc Discount Vector {1}, realModifiedCashFlowValue {2}, modifiedCashFlowValue {3} \n".format(cashFlowVector,
-    #                                                                                                                          waccDiscountVector, 
-    #                                                                                                                          realModifiedCashFlowValue, 
-    #                                                                                                                          modifiedCashFlowValue))
+    testNonLinearDiscountedCashFlowOnRealData()
     
-
-
-
-    getRealData()
-    r = 2 + 2
-
-
-
-    
-
-
 
 main()
