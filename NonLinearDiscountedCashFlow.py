@@ -434,7 +434,7 @@ def testNonLinearDiscountedCashFlowOnMarketData(ticker):
     print("Dates: \n {0} \n".format(d))
     print("Cash Flows \n {0} \n".format(c))
 
-    k, r, v, ns, projCAgainstNs = nonLinearDiscountedCashFlow(wacc,c) 
+    k, r, v, ns, projCAgainstNs, _ = nonLinearDiscountedCashFlow(wacc,c) 
     print("K Vector {0}, R vector {1} V {2}, NS {3}, ProjCAgainstNS {3}")
 
     print("Null Space {0} with shape {1} \n and Projection of C onto Null Space {2} \n".format(ns, ns.shape, projCAgainstNs))
@@ -475,25 +475,35 @@ def getFeatureVector(cashFlowVector, wacc):
     #projCAgainstNs are the projection of C against the null-space. 
     absoluteValueOfProjections = abs(projCAgainstNs)[np.newaxis, :]
 
+
     #Need to extract the relevant attributes from the nonLinearDiscountedCashFlow.
-    fullFeatureVector = np.concatenate([linearDiscountedValue, absoluteValueOfProjections], axis = 1)
+    fullFeatureVector = absoluteValueOfProjections
     
-    return fullFeatureVector
+    return fullFeatureVector, linearDiscountedValue
 
 
 def createFeatureMatrix(cashFlowMatrix, waccVector):
+
+
+    if len(waccVector.shape) == 2:
+        waccVector = waccVector.flatten()
     
     #Need to create feature matrix
     n,p = cashFlowMatrix.shape
     featureMatrix = []
+    linearDiscountedCashFlowValues = []
     for i in range(n):
         wacc = waccVector[i]
         cashFlowVector = np.array(cashFlowMatrix[i, :]) #Need to cast into two d array. 1 x N array.
-        featureVector = getFeatureVector(cashFlowVector, wacc)
-        featureMatrix.append(featureVector)
+        #For some reason, these values look off.
+        featureVector, linearDiscountedCashFlowValue = getFeatureVector(cashFlowVector, wacc)
+        featureMatrix.append(featureVector.flatten())
+        linearDiscountedCashFlowValues.append(linearDiscountedCashFlowValue.flatten())
+    featureMatrix = np.array(featureMatrix)
+    linearDiscountedCashFlowValues = np.array(linearDiscountedCashFlowValues)
+    return featureMatrix, linearDiscountedCashFlowValues
 
-    featureMatrix = np.concatenate(featureMatrix, axis = 0)
-    return featureMatrix
+
 
 
 
@@ -525,13 +535,46 @@ def simulateData():
 
 
 def getRealData():
+
+    import pandas as pd
+    logging.info("Getting Real Data \n")
+    apiKey = "5KaYTqFoTFjUIjtv1SUUxP_2TTaAJp2j" 
+
+    import os
+    cwd = os.getcwd()
+    newDirectory = "realDataStored"
+    newPath = os.path.join(cwd, newDirectory)
+
+    if(not os.path.exists(newPath)):
+        os.mkdir(newPath)
     
-    apiKey = "5KaYTqFoTFjUIjtv1SUUxP_2TTaAJp2j"
+    cashFlowMatrixDfPath = os.path.join(newPath, "cashFlowMatrixDf.csv")
+    cashFlowPriceDfPath = os.path.join(newPath, "cashFlowPriceDf.csv")
+    waccVectorDfPath = os.path.join(newPath, "waccVectorDf.csv")
     
+    realDataPathsExist = (os.path.exists(cashFlowMatrixDfPath) & os.path.exists(cashFlowPriceDfPath) & os.path.exists(waccVectorDfPath))
+
+    if realDataPathsExist:
+        logging.info("Getting Real Data From Disk \n")
+        cashFlowMatrixDf = pd.read_csv(cashFlowMatrixDfPath)
+        cashFlowPriceDf = pd.read_csv(cashFlowPriceDfPath)
+        waccVectorDf = pd.read_csv(waccVectorDfPath)
+        cashFlowMatrix = cashFlowMatrixDf.to_numpy()
+        cashFlowPrice = cashFlowPriceDf.to_numpy()
+        waccVector = waccVectorDf.to_numpy()
+        logging.info("Pulled Real Data From Disk \n")
+
+        return waccVector, cashFlowMatrix, cashFlowPrice
+
+    logging.info("Real Data Does Not Exist On Disk \n")
     #Get tickers here.
     r = None
     try:
-        r = requests.get("https://api.polygon.io/v3/reference/tickers?apiKey={0}".format(apiKey))
+        logging.info("Tickers are being loaded...\n")
+        #/v2/snapshot/locale/us/markets/stocks/tickers
+        requestString = "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers?apiKey={0}".format(apiKey)
+        logging.info("Request: {0} \n".format(requestString))
+        r = requests.get(requestString)
     except Exception as e:
         print(e)
 
@@ -540,85 +583,117 @@ def getRealData():
 
     import json
     r = json.loads(r.content.decode('utf-8'))
-    tickers = [record["ticker"] for record in r["results"] if (record["market"] == "stocks") and not ("." in record["market"])]
+    tickers = [record["ticker"] for record in r["tickers"] if not ("." in record["ticker"])]
     
     cashFlowMatrix = []
     cashFlowPriceVector = []
     waccVector = []
+    tickerList = []
 
-    for ticker in tickers: 
-        try: 
-            logging.info("Get Free Cash-Flow Projections For Ticker {0} \n".format(ticker))
-            periodsAndFreeCashFlows, wacc, waccDiscountVector = getProjectedFreeCashFlows(ticker)
-        except Exception as e: 
-           logging.error(e)
-           logging.exception(e)
-           logging.info("Cash-Flows Not Available For the ticker {0} \n".format(ticker))
-           continue
+    try: 
+        for ticker in tickers: 
+            try: 
+                logging.info("Get Free Cash-Flow Projections For Ticker {0} \n".format(ticker))
+                periodsAndFreeCashFlows, wacc, waccDiscountVector = getProjectedFreeCashFlows(ticker)
+            except Exception as e: 
+               logging.error(e)
+               logging.exception(e)
+               logging.info("Cash-Flows Not Available For the ticker {0} \n".format(ticker))
+               continue
 
-        try:
-            logging.info("Get Market Value of Cash Flows for the ticker {0} \n".format(ticker))
-            marketValueOfCashFlowValue = getMarketValueOfCashFlows(ticker)
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            logging.info("Exception is provided by: {0} \n".format(e))
-            logging.info("Cash-Flows Not Available For the ticker {0} \n".format(ticker))
-            continue
+            try:
+                logging.info("Get Market Value of Cash Flows for the ticker {0} \n".format(ticker))
+                marketValueOfCashFlowValue = getMarketValueOfCashFlows(ticker)
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                logging.info("Exception is provided by: {0} \n".format(e))
+                logging.info("Cash-Flows Not Available For the ticker {0} \n".format(ticker))
+                continue
 
-        cashFlows = [x[1] for x in periodsAndFreeCashFlows]
-        logging.info("**************************** \n"
-                    "Resolve: Calculated CashFlow Matrix \n"
-                    "CashFlow Price \n"
-                    "WACC Vector \n"
-                    "***************************** \n")
-        cashFlowMatrix.append(cashFlows)
-        cashFlowPriceVector.append(marketValueOfCashFlowValue)
-        waccVector.append(wacc)
+            cashFlows = [x[1] for x in periodsAndFreeCashFlows]
+            logging.info("**************************** \n"
+                        "Resolve: Calculated CashFlow Matrix \n"
+                        "CashFlow Price \n"
+                        "WACC Vector \n"
+                        "***************************** \n")
+            cashFlowMatrix.append(cashFlows)
+            cashFlowPriceVector.append(marketValueOfCashFlowValue)
+            waccVector.append(wacc)
+            tickerList.append(ticker)
+    except: 
+        logging.error("Error was encountered in the try-block \n")
+    finally:
+        #Filter for the array that has the largest number of arrays 
+        #of arrays
+        lengthOfCashFlowVectorList = [len(cashFlowVector) for cashFlowVector in cashFlowMatrix]
+        from collections import Counter 
+        c = Counter(lengthOfCashFlowVectorList)
+        mostCommonLength = c.most_common(1)[0][0]
+        assert(type(mostCommonLength) == int)
+
+        cashFlowMatrixFiltered = []
+        cashFlowPriceFiltered = []
+        waccVectorFiltered = []
+        tickerListFiltered = []
+        for i in range(len(cashFlowMatrix)):
+
+            cashFlow = cashFlowMatrix[i]
+            cashFlowPrice = cashFlowPriceVector[i]
+            wacc = waccVector[i]
+            ticker = tickerList[i]
+
+            if len(cashFlow) == mostCommonLength:
+                cashFlowMatrixFiltered.append(cashFlow)
+                cashFlowPriceFiltered.append(cashFlowPrice)
+                waccVectorFiltered.append(wacc)
+                tickerListFiltered.append(ticker)
+
     
+        #Convert the real data matricies to
+        #numpy matricies
+        logging.info("Converting to Numpy Arrays \n")
+        cashFlowMatrix = np.array(cashFlowMatrixFiltered)
+        cashFlowPrice = np.array(cashFlowPriceFiltered)
+        waccVector = np.array(waccVectorFiltered)
+
+        #Store the cashFlowMatrix, cashFlowPrice, and waccVector to
+        #be used in the future. 
+
+        #Need to figure out how to store these numpy matricies 
     
-    #Filter for the array that has the largest number of arrays 
-    #of arrays
-    lengthOfCashFlowVectorList = [len(cashFlowVector) for cashFlowVector in cashFlowMatrix]
-    from collections import Counter 
-    c = Counter(lengthOfCashFlowVectorList)
-    mostCommonLength = c.most_common(1)[0][0]
-    assert(type(mostCommonLength) == int)
+        cashFlowMatrixDf = pd.DataFrame(cashFlowMatrix)
+        cashFlowPriceDf = pd.DataFrame(cashFlowPrice)
+        waccVectorDf = pd.DataFrame(waccVector)
 
-    cashFlowMatrixFiltered = []
-    cashFlowPriceFiltered = []
-    waccVectorFiltered = []
-    for i in range(len(cashFlowMatrix)):
+        logging.info("Writing Real Data To Disk \n")
+        cashFlowMatrixDf.to_csv(cashFlowMatrixDfPath, index=False)
+        cashFlowPriceDf.to_csv(cashFlowPriceDfPath, index=False)
+        waccVectorDf.to_csv(waccVectorDfPath, index=False)
 
-        cashFlow = cashFlowMatrix[i]
-        cashFlowPrice = cashFlowPriceVector[i]
-        wacc = waccVector[i]
 
-        if len(cashFlow) == mostCommonLength:
-            cashFlowMatrixFiltered.append(cashFlow)
-            cashFlowPriceFiltered.append(cashFlowPrice)
-            waccVectorFiltered.append(wacc)
-
-    
-    #Convert the real data matricies to
-    #numpy matricies
-    logging.info("Converting to Numpy Arrays \n")
-    cashFlowMatrix = np.array(cashFlowMatrixFiltered)
-    cashFlowPrice = np.array(cashFlowPriceFiltered)
-    waccVector = np.array(waccVectorFiltered)
-
-    return waccVector, cashFlowMatrix, cashFlowPrice
+        return waccVector, cashFlowMatrix, cashFlowPrice
 
 
 def testNonLinearDiscountedCashFlowOnRealData():
     
     waccVector, cashFlowMatrix, cashFlowPrice = getRealData()
-    featureMatrix = createFeatureMatrix(cashFlowMatrix, waccVector)
-
+    featureMatrix, linearDiscountedCashFlowValues = createFeatureMatrix(cashFlowMatrix, waccVector)
+    errorInCashFlowPrice = cashFlowPrice - linearDiscountedCashFlowValues
     try:
         #We want a linear least squares solve.
         #np.linalg.lstsq. 
-        x, residuals, rank, s = np.linalg.lstsq(featureMatrix,cashFlowPrice)
+        x, residuals, rank, s = np.linalg.lstsq(featureMatrix,errorInCashFlowPrice)
+
+        with open("nonLinearDiscounteddCashFlow.txt", "w") as external_file:
+            print("Feature Matrix \n {0} \n".format(featureMatrix))
+            print("Error In Cash Flow Values \n {0} \n".format(errorInCashFlowPrice))
+            print("Vector X is provided by: \n {0} \n".format(x), file=external_file)
+            print("Residuals R is provided by: \n {0} \n".format(residuals), file=external_file)
+            print("Rank is provided by: \n {0} \n".format(rank), file=external_file)
+            print("Singular Values is provided by: \n {0} \n".format(s), file=external_file)
+            external_file.close()
+
     except Exception as e:
         logging.error("Error in Least Squares Solve: \n")
         logging.error(e)
@@ -643,27 +718,8 @@ def testMarketValueOfCashFlows():
     periodsAndFreeCashFlows, longTermGrowthRate, netDebt, outstandingShares, marketSharePrice = getRelevantShareCharacteristics(ticker)    
 
     print("Market Value Of Cash Flows {0} \n".format(calculatedMarketValueOfCashFlows))
-
     
-
-def  testNonLinearDiscountedCashFlowOnRealData():
     
-    waccVector, cashFlowMatrix, cashFlowPrice = getRealData()
-    featureMatrix = createFeatureMatrix(cashFlowMatrix, waccVector)
-    
-    try:
-        #We want a linear least squares solve.
-        #np.linalg.lstsq. 
-        x, residuals, rank, s = np.linalg.lstsq(featureMatrix,cashFlowPrice)
-    except Exception as e:
-        logging.error("Error in Least Squares Solve: \n")
-        logging.error(e)
-    
-    print("Vector X is provided by: {0} \n".format(x))
-    print("Residuals R is provided by: {0} \n".format(residuals))
-    print("Rank is provided by: {0} \n".format(rank))
-    print("Singular Values is provided by: {0} \n".format(s))
-
 def testCompareValueOfCashFlows():
 
     tickerXOM = "XOM"
@@ -695,7 +751,11 @@ def testDiscountedCashFlowAPI(ticker):
     r = getResultsFromRequest(requestString)
 
 def main():
-    
+
+    ticker = "XOM"
+    logging.info("Testing on Market Data with Ticker {0} \n".format(ticker))
+    testNonLinearDiscountedCashFlowOnMarketData(ticker)
+    logging.info("Testing on Real Data \n")
     testNonLinearDiscountedCashFlowOnRealData()
     
 
