@@ -49,6 +49,10 @@ import random
 import logging 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 import time
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt  #for plotting purpose
+from sklearn.linear_model import LinearRegression
 
 
 cashFlowLow = -100
@@ -672,7 +676,7 @@ def getRealData():
         return waccVector, cashFlowMatrix, cashFlowPrice
 
 
-def testNonLinearDiscountedCashFlowOnRealData():
+def testNonLinearDiscountedCashFlowOnRealData(plotResiduals = True):
     
     waccVector, cashFlowMatrix, cashFlowPrice = getRealData()
     featureMatrix, linearDiscountedCashFlowValues = createFeatureMatrix(cashFlowMatrix, waccVector)
@@ -680,9 +684,12 @@ def testNonLinearDiscountedCashFlowOnRealData():
     try:
         #We want a linear least squares solve.
         #np.linalg.lstsq. 
+        logging.info("Running np.linalg.lstsq on real data \n")
+        import numpy as np
         x, residuals, rank, s = np.linalg.lstsq(featureMatrix,errorInCashFlowPrice)
+        logging.info("After running np.linalg.lstsq on real data \n")
 
-        with open("nonLinearDiscounteddCashFlow.txt", "w") as external_file:
+        with open("linearLeastSquaresNonLinearDiscounteddCashFlow.txt", "w") as external_file:
             print("Feature Matrix \n {0} \n".format(featureMatrix))
             print("Error In Cash Flow Values \n {0} \n".format(errorInCashFlowPrice))
             print("Vector X is provided by: \n {0} \n".format(x), file=external_file)
@@ -694,11 +701,148 @@ def testNonLinearDiscountedCashFlowOnRealData():
     except Exception as e:
         logging.error("Error in Least Squares Solve: \n")
         logging.error(e)
+
+
+
+    try:
+        import numpy as np
+        import pandas as pd
+        import matplotlib.pyplot as plt  #for plotting purpose
+        from sklearn.linear_model import LinearRegression
+
+        X = featureMatrix
+        Y = errorInCashFlowPrice
+
+        reg = LinearRegression().fit(X, Y)
+        coeff = reg.coef_
+        intercept = reg.intercept_ 
+
+        if plotResiduals:
+            residualsVector = Y - np.matmul(X, coeff.T)
+            residualsVector = residualsVector.flatten()
+            residualsIndex = [i for i in range(len(residualsVector))]
+            plt.hist(residualsVector)
+            plt.show()
+        
+        with open("standardNonLinearDiscountedCashFlow.txt", "w") as external_file:
+            print("Feature Matrix \n {0} \n".format(featureMatrix))
+            print("Error In Cash Flow Values \n {0} \n".format(errorInCashFlowPrice))
+            print("Vector X is provided by: \n {0} \n".format(coeff), file=external_file)
+            print("Intercept is provided by: \n {0} \n".format(intercept), file=external_file)
+            external_file.close()
+
+    except Exception as e:
+        logging.error("Error in Least Squares Solve: \n")
+        logging.error(e)
+   
+
+    try:
+        import numpy as np
+        import pandas as pd
+        import matplotlib.pyplot as plt  #for plotting purpose
+        from sklearn.linear_model import LinearRegression
+
+        X =featureMatrix[:,0:3]
+        Y = errorInCashFlowPrice
+
+        reg = LinearRegression().fit(X, Y)
+        coeff = reg.coef_
+        intercept = reg.intercept_      
+
+        #More like subset of kernel vectors
+        with open("standardNonLinearDiscountedCashFlowFirstKernelVector.txt", "w") as external_file:
+            print("Feature Matrix \n {0} \n".format(X))
+            print("Error In Cash Flow Values \n {0} \n".format(errorInCashFlowPrice))
+            print("Vector X is provided by: \n {0} \n".format(coeff), file=external_file)
+            print("Intercept is provided by: \n {0} \n".format(intercept), file=external_file)
+            external_file.close()
+
+    except Exception as e:
+        logging.error("Error in Least Squares Solve: \n")
+        logging.error(e)
+
+
+    try:
+        logging.info("\n Running Lasso Regression on Real Data \n")
+        import numpy as np
+        import pandas as pd
+        import matplotlib.pyplot as plt  #for plotting purpose
+        from sklearn.linear_model import Lasso
+
+        X = featureMatrix
+        Y = errorInCashFlowPrice
+
+        reg = Lasso(alpha=0.1).fit(X, Y)
+        coeff = reg.coef_
+        intercept = reg.intercept_
+        
+        if plotResiduals:
+            residualsVector = Y - np.matmul(X, coeff.T)
+            residualsVector = residualsVector.flatten()
+            residualsIndex = [i for i in range(len(residualsVector))]
+            plt.hist(residualsVector)
+            plt.savefig('residualsHistogramPlotForLasso.png')
+
+        with open("lassoNonLinearRealData.txt", "w") as external_file:
+            print("Feature Matrix \n {0} \n".format(X))
+            print("Error In Cash Flow Values \n {0} \n".format(errorInCashFlowPrice))
+            print("Vector X is provided by: \n {0} \n".format(coeff), file=external_file)
+            print("Intercept is provided by: \n {0} \n".format(intercept), file=external_file)
+            external_file.close()
+
+    except Exception as e:
+        logging.error("Error in Least Squares Solve: \n")
+        logging.error(e)
+
+
+
+def testNonLinearDiscountedCashFlowOnSimulatedData():
+
+    waccVector, cashFlowMatrix, cashFlowPrice = simulateData()
+    featureMatrix, linearDiscountedCashFlowValues = createFeatureMatrix(cashFlowMatrix, waccVector)
+    errorInCashFlowPrice = cashFlowPrice - linearDiscountedCashFlowValues
+    try:
+        #We want a linear least squares solve.
+        #np.linalg.lstsq. 
+        x, residuals, rank, s = np.linalg.lstsq(featureMatrix,errorInCashFlowPrice)
+
+        with open("llsqSimulatedDataNonLinearDiscounteddCashFlow.txt", "w") as external_file:
+            print("Feature Matrix \n {0} \n".format(featureMatrix))
+            print("Error In Cash Flow Values \n {0} \n".format(errorInCashFlowPrice))
+            print("Vector X is provided by: \n {0} \n".format(x), file=external_file)
+            print("Residuals R is provided by: \n {0} \n".format(residuals), file=external_file)
+            print("Rank is provided by: \n {0} \n".format(rank), file=external_file)
+            print("Singular Values is provided by: \n {0} \n".format(s), file=external_file)
+            external_file.close()
+
+    except Exception as e:
+        logging.error("Error in Least Squares Solve: \n")
+        logging.error(e)
+
+
+
+    try:
+        
+        X = featureMatrix
+        Y = errorInCashFlowPrice
+
+        reg = LinearRegression().fit(X, Y)
+        coeff = reg.coef_
+        intercept = reg.intercept_      
+
+        with open("lrOnSimulatedDataNonLinearDiscountedCashFlow.txt", "w") as external_file:
+            print("Feature Matrix \n {0} \n".format(featureMatrix))
+            print("Error In Cash Flow Values \n {0} \n".format(errorInCashFlowPrice))
+            print("Vector X is provided by: \n {0} \n".format(coeff), file=external_file)
+            print("Intercept is provided by: \n {0} \n".format(intercept), file=external_file)
+            external_file.close()
+
+    except Exception as e:
+        logging.error("Error in Least Squares Solve: \n")
+        logging.error(e)
+
+
     
-    print("Vector X is provided by: {0} \n".format(x))
-    print("Residuals R is provided by: {0} \n".format(residuals))
-    print("Rank is provided by: {0} \n".format(rank))
-    print("Singular Values is provided by: {0} \n".format(s))
 
 
 def testMarketValueOfCashFlows():
@@ -749,11 +893,9 @@ def testDiscountedCashFlowAPI(ticker):
 
 def main():
 
-    ticker = "XOM"
-    logging.info("Testing on Market Data with Ticker {0} \n".format(ticker))
-    testNonLinearDiscountedCashFlowOnMarketData(ticker)
-    logging.info("Testing on Real Data \n")
-    testNonLinearDiscountedCashFlowOnRealData()
+    
+   logging.info("Testing on Real Data \n")
+   testNonLinearDiscountedCashFlowOnRealData()
     
 
 main()

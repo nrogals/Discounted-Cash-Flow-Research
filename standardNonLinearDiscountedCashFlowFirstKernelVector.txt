@@ -1,0 +1,6 @@
+Vector X is provided by: 
+ [[ -24.07269183  121.78614543 -102.28124133]] 
+
+Intercept is provided by: 
+ [-1005.93250387] 
+
