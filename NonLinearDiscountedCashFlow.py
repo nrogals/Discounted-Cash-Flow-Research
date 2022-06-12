@@ -504,9 +504,6 @@ def createFeatureMatrix(cashFlowMatrix, waccVector):
     return featureMatrix, linearDiscountedCashFlowValues
 
 
-
-
-
 def simulateData():
 
     numberOfTimePeriods = 10 
