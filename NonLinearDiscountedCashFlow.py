@@ -679,6 +679,8 @@ def getRealData():
 def testNonLinearDiscountedCashFlowOnRealData(plotResiduals = True):
     
     waccVector, cashFlowMatrix, cashFlowPrice = getRealData()
+
+
     featureMatrix, linearDiscountedCashFlowValues = createFeatureMatrix(cashFlowMatrix, waccVector)
     errorInCashFlowPrice = cashFlowPrice - linearDiscountedCashFlowValues
     try:
@@ -686,6 +688,13 @@ def testNonLinearDiscountedCashFlowOnRealData(plotResiduals = True):
         #np.linalg.lstsq. 
         logging.info("Running np.linalg.lstsq on real data \n")
         import numpy as np
+        import pandas as pd
+        n, p = cashFlowMatrix.shape
+        featureMatrixDf = pd.DataFrame(cashFlowMatrix, columns = ["Projection_Onto_Kernel_Vector_" + str(i) for i in range(p)])
+        errorInCashFlowDf = pd.DataFrame(errorInCashFlowPrice, columns = ["ErrorInCashFlow"])
+        regressionDf = pd.concat([featureMatrixDf, errorInCashFlowDf], axis=0)
+        regressionDf.to_csv("RegressionDf.csv")
+
         x, residuals, rank, s = np.linalg.lstsq(featureMatrix,errorInCashFlowPrice)
         logging.info("After running np.linalg.lstsq on real data \n")
 
