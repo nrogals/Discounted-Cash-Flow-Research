@@ -7,26 +7,18 @@ The discounted cash-flow can viewed as a linear pricing tool.
 A non-linear discounted cash-flow can be considered, which is what we do here. 
 
 TODO:
-    1. Need to investigate the errors that arise from the discounted cash-flow.  
-    2. Understand why the null space vector plotting does not accurately represent 
-    the values that get assigned in the charts. It looks like the plotting is wrong.
-    3. Need to develop a simiulator for cash-flow volatility that we can then invert for and 
-    see how our algorithms do on simulated data. 
-    4. Need to develop a regression to map the the kernel volatility into the error that is seen 
-    This will require coming up with a good regression that should be attempt to capture the reliance 
-    of the kernel vectors into the potential error. This will represent a non-linear regression. 
-    5. Analyze other research that provide one with a view on cash-flow volatility and its impact on 
-    the pricing of the asset with a fixed wacc. 
-    6. I may want to change the style of the code so that all vectors are column or row vectors so that 
-    it is not confusing to the user. 
-
+DONE    1. Need to investigate the errors that arise from the discounted cash-flow.  
+DONE    2. Need to develop a regression to map the the kernel volatility into the error that is seen 
+           This will require coming up with a good regression that should be attempt to capture the reliance 
+           of the kernel vectors into the potential error. This will represent a non-linear regression. 
+DONE    3. A paper was found from Allayannis, Earnings volatility, cash flow volatility, and firm value.
+            Darden Graduate School of Business, UVA
+                -The paper finds that cash-flow volatility is negatively valued by investors. 
+                -Indeed they state that there is approximately 32% decrease in the value of a firm 
+                for additional volatility. 
+                -Such observations are consistent with risk management theory and suggests managers efforts 
+                to produce smooth financial statements may add value to the firm. 
     
-    1. Paper Finds the Following:
-        - Empirical Evidence that cash flow volatility is negatively valued by investors. 
-        - The magnitude of the effect is substantial with a one standard deviation increase in cash-flow 
-        volatility resulting in approximately 32% decrease in the value of the firm. This is consistent with 
-        risk management theory and suggests that managers efforts to produce smooth financial statements may 
-        add value to the firm.
 
 
     Data Sources For Private Equity 
@@ -744,6 +736,62 @@ def testNonLinearDiscountedCashFlowOnRealData(plotResiduals = True):
         logging.error("Error in Least Squares Solve: \n")
         logging.error(e)
    
+
+    try: 
+        import numpy as np
+        import pandas as pd
+        import matplotlib.pyplot as plt  #for plotting purpose
+        import scipy
+        import os
+
+        #Loop over the different kernel vectors.
+        logging.info("\n Calculating Projections Onto Kernel Vectors \n")
+        n, p = X.shape
+        for i in range(p):
+            x = X[:,i]
+            y = Y[:,0]
+            slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(x, y)
+            logging.info("\n Projection Against {0}th Kernel Vector \n".format(i))
+            plt.scatter(x,y)
+            plt.ylabel("Error In Cash-Flows")
+            plt.xlabel("Projection Against {0}th Kernel Vector".format(i))
+            plt.title("Error in Price Plotted Against Cash-Flow Volatility")
+            directory_name = "kernel_vector_projections"
+            if not os.path.exists(directory_name): #What does the not operator look like? 
+                logging.info("Directory {0} does not exist, so make it \n".format(directory_name))
+                os.mkdir(directory_name)
+            else:
+                pass
+            
+            
+            path_to_file = os.path.join(directory_name, "plot{0}thKernelVectorAgainstErrorInCashFlows.png".format(i))
+            if os.path.exists(path_to_file):
+                logging.info("Since the figure exists, it is necessary to remove it \n The path being removed is: \n {0}".format(path_to_file))
+                os.remove(path_to_file)
+            else:
+                logging.info("Saving figure to path \n {0} \n".format(path_to_file))
+                plt.savefig(path_to_file)
+
+            logging.info("Closing plots since they are no longer needed \n")
+            #We are now done plotting. So we can close
+            #the plots and clear them. 
+            plt.clf()
+            plt.close()
+
+        with open("standardNonLinearDiscountedCashFlowWithOneVariable.txt", "w") as external_file:
+            print("Feature Matrix \n {0} \n".format(x))
+            print("Error In Cash Flow Values \n {0} \n".format(y))
+            print("Slope is provided by: \n {0} \n".format(slope), file=external_file)
+            print("Intercept is provided by: \n {0} \n".format(intercept), file=external_file)
+            print("R Value is provided by: \n {0} \n".format(r_value), file=external_file)
+            print("Std Err is provided by: \n {0} \n".format(std_err), file=external_file)
+            external_file.close()
+
+    except Exception as e:
+        logging.error("Error in Plotting \n")
+        logging.error(e)
+
+    
 
     try:
         import numpy as np

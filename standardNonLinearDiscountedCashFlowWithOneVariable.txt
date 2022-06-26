@@ -1,0 +1,12 @@
+Slope is provided by: 
+ -14.201586072346432 
+
+Intercept is provided by: 
+ 383.0509262624655 
+
+R Value is provided by: 
+ -0.9554041156157969 
+
+Std Err is provided by: 
+ 0.15828954310440865 
+
